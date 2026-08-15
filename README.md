@@ -1,52 +1,79 @@
 # Local Multimodal RAG
 
-A privacy-first retrieval-augmented generation platform that runs entirely on your machine. PDFs are parsed locally (text, tables, figures), figures are captioned by a local vision model, and answers are grounded in page-level citations — no document content is sent to a cloud API.
+Privacy-first PDF question answering on localhost. Documents never leave the machine: parse, caption, embed, retrieve, and generate all run locally.
 
-This repository currently contains **architecture and development planning documents**. Application code is not scaffolded yet; follow the implementation plan when you are ready to build.
+Retrieval is **hybrid**: pgvector cosine search plus Postgres full-text search (`tsvector` / `ts_rank_cd`), fused with Reciprocal Rank Fusion. This is not BM25.
 
-## Why this exists
-
-Top-tier engineering interviews and resumes reward projects that combine:
-
-- **Privacy-preserving ML** — local inference with Ollama
-- **Deep learning systems** — multimodal ingest, embeddings, hybrid retrieval
-- **Scalable backend design** — async APIs, job queues, Postgres as system of record
-
-This project is scoped to be demoable on a laptop and designed so the same architecture can grow.
-
-## Documentation map
-
-| Document | What it covers |
-| --- | --- |
-| [docs/README.md](docs/README.md) | Index of all planning docs |
-| [docs/product-brief.md](docs/product-brief.md) | Vision, users, MVP vs later, success criteria |
-| [docs/architecture.md](docs/architecture.md) | System design, data flow, component boundaries |
-| [docs/data-model.md](docs/data-model.md) | Postgres schema, indexes, vector/FTS design |
-| [docs/api.md](docs/api.md) | HTTP contracts, streaming, error model |
-| [docs/frontend.md](docs/frontend.md) | Next.js UX, citation highlighting, state |
-| [docs/security.md](docs/security.md) | Local-only threat model and controls |
-| [docs/development.md](docs/development.md) | Repo layout, tooling, conventions |
-| [docs/roadmap.md](docs/roadmap.md) | Phased delivery |
-| [docs/adr/](docs/adr/) | Architecture Decision Records |
-| [docs/superpowers/specs/2026-08-15-local-multimodal-rag-design.md](docs/superpowers/specs/2026-08-15-local-multimodal-rag-design.md) | Canonical design spec |
-| [docs/superpowers/plans/2026-08-15-mvp-implementation.md](docs/superpowers/plans/2026-08-15-mvp-implementation.md) | Bite-sized implementation plan |
-
-## Locked stack (MVP)
+## Stack
 
 | Layer | Choice |
 | --- | --- |
-| Frontend | Next.js 15 (App Router), React 19, Tailwind CSS, shadcn/ui, pdf.js |
-| Backend | FastAPI, async SQLAlchemy 2, Pydantic v2, uv |
-| Inference | Ollama — text LLM, vision LLM, embeddings |
-| RAG | LlamaIndex (thin adapters; Postgres is source of truth) |
+| Web | Next.js 15, React 19, Tailwind v4, shadcn, pdf.js |
+| API | FastAPI, SQLAlchemy 2 async, Pydantic v2, uv |
+| Inference | Ollama (embed, vision, generate) |
 | Data | PostgreSQL 16 + pgvector + `tsvector` |
-| Jobs / cache | Redis 7 + Arq |
-| Compose | Postgres, Redis, Ollama, API, web |
+| Jobs | Redis 7 + Arq |
 
-## Non-goals for v1
+Published ports bind to `127.0.0.1` only.
 
-Multi-user auth, cloud model providers, Office/HTML ingest, agent tool-use, and production Kubernetes. Those are designed as extension points, not MVP work.
+## Quick start
 
-## Status
+1. Copy `.env.example` to `.env`. On this repo the default Postgres mapping is **`127.0.0.1:5433`** (host 5432 is often taken).
 
-**Phase: pre-implementation.** Read the product brief, then the architecture doc, then the MVP plan.
+2. Start Postgres (pgvector image) and Redis:
+
+```bash
+docker compose -f infra/docker-compose.yml up -d
+```
+
+3. Pull Ollama models (API listens on `http://127.0.0.1:11434`):
+
+```bash
+ollama pull nomic-embed-text
+ollama pull qwen2.5:7b
+ollama pull qwen2.5vl:7b
+```
+
+4. API + worker (from `apps/api`, Python 3.12):
+
+```bash
+uv sync
+uv run alembic upgrade head
+uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
+uv run arq app.worker.WorkerSettings
+```
+
+5. Web (from `apps/web`):
+
+```bash
+npm install
+npm run dev
+```
+
+Open `http://127.0.0.1:3000/library`. Upload `tests/fixtures/sample.pdf`. When status is Ready, open the document and ask a question.
+
+## Retrieval eval
+
+With a ready fixture document and Ollama embeddings:
+
+```bash
+apps/api/.venv/Scripts/python.exe scripts/eval_retrieval.py
+```
+
+Prints vector vs hybrid hit@k. Hybrid matching vector is acceptable on this tiny set.
+
+## Architecture (short)
+
+```
+Browser (Next.js, loopback)
+  → FastAPI (upload, chat SSE)
+  → Postgres (documents, chunks, pgvector, FTS)
+  → Redis/Arq (ingest: parse → caption → chunk → embed)
+  → Ollama (nomic-embed-text, vision captions, generate)
+```
+
+Ingest writes page-level chunks with bounding boxes. Chat retrieves with RRF, streams tokens, and the UI highlights cited PDF regions.
+
+## Docs
+
+Planning docs live under `docs/` (`architecture.md`, `data-model.md`, `api.md`, ADRs). Application code is in `apps/api` and `apps/web`.

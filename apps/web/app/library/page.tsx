@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { UploadDropzone } from "@/components/upload-dropzone";
@@ -24,7 +26,10 @@ export default async function LibraryPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Library</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          Local PDFs stay on this machine.
+          Local PDFs stay on this machine.{" "}
+          <Link className="hover:underline" href="/settings">
+            Settings
+          </Link>
         </p>
       </div>
       <Card>
