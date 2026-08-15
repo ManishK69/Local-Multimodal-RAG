@@ -10,8 +10,8 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_session
 from app.core.config import settings
@@ -21,7 +21,7 @@ from app.db.repositories import conversations as conv_repo
 from app.services.citations import parse_markers
 from app.services.generate import build_messages, citation_payloads
 from app.services.ollama import OllamaClient
-from app.services.retrieval import vector_search
+from app.services.retrieval import hybrid_search
 
 router = APIRouter(tags=["chat"])
 
@@ -172,14 +172,17 @@ async def post_message(
             query_vec = (await client.embed([body.content]))[0]
             latency_embed_ms = int((time.perf_counter() - embed_started) * 1000)
             retrieve_started = time.perf_counter()
-            ranked = await vector_search(
+            fused_k = body.top_k
+            result = await hybrid_search(
                 session,
-                query_vec,
-                k=20,
+                body.content,
+                query_vec=query_vec,
+                k_vector=20,
+                k_lexical=20,
+                fused_k=fused_k,
                 document_ids=body.document_ids or None,
             )
-            fused_k = body.top_k
-            ranked = ranked[:fused_k]
+            ranked = result.fused
             latency_retrieve_ms = int(
                 (time.perf_counter() - retrieve_started) * 1000
             )
@@ -214,8 +217,8 @@ async def post_message(
                     query=body.content,
                     embed_model=settings.embed_model,
                     generate_model=settings.generate_model,
-                    vector_chunk_ids=[item.chunk_id for item in ranked],
-                    lexical_chunk_ids=[],
+                    vector_chunk_ids=[item.chunk_id for item in result.vector],
+                    lexical_chunk_ids=[item.chunk_id for item in result.lexical],
                     fused_chunk_ids=[item.chunk_id for item in ranked],
                     fused_scores=[item.score for item in ranked],
                     latency_embed_ms=latency_embed_ms,
