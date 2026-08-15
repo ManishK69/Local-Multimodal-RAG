@@ -155,7 +155,9 @@ async def run_chunk(session: AsyncSession, document: Document) -> None:
 
 
 async def run_embed(session: AsyncSession, document: Document) -> None:
-    return
+    from app.services.embeddings import embed_chunks
+
+    await embed_chunks(session, document.id)
 
 
 def _touch(document: Document, status: str) -> None:
