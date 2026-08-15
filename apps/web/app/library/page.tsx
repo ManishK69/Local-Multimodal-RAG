@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { UploadDropzone } from "@/components/upload-dropzone";
 import { getHealth } from "@/lib/api";
 
 function statusLabel(status: string): string {
@@ -39,6 +40,7 @@ export default async function LibraryPage() {
             : "Could not reach the API at /backend/health."}
         </CardContent>
       </Card>
+      <UploadDropzone />
     </main>
   );
 }
