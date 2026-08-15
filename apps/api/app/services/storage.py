@@ -7,8 +7,19 @@ def pdf_path(sha256: str) -> Path:
     return Path(settings.data_dir) / "files" / f"{sha256}.pdf"
 
 
+def image_path(sha256: str) -> Path:
+    return Path(settings.data_dir) / "images" / f"{sha256}.png"
+
+
 def save_pdf(data: bytes, sha256: str) -> Path:
     path = pdf_path(sha256)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    return path
+
+
+def save_image(data: bytes, sha256: str) -> Path:
+    path = image_path(sha256)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(data)
     return path

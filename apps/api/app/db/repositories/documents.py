@@ -107,5 +107,9 @@ async def reset_failed_for_reingest(session: AsyncSession, doc: Document) -> Doc
 
 
 async def delete_document(session: AsyncSession, doc: Document) -> None:
+    await session.execute(delete(Chunk).where(Chunk.document_id == doc.id))
+    await session.execute(
+        delete(DocumentPage).where(DocumentPage.document_id == doc.id)
+    )
     await session.delete(doc)
     await session.commit()

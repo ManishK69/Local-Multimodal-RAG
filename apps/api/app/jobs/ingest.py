@@ -4,11 +4,15 @@ from typing import Any
 from arq import create_pool
 from arq.connections import RedisSettings
 from arq.constants import default_queue_name, job_key_prefix, result_key_prefix
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.db.models import Document
+from app.db.models import Chunk, Document, DocumentPage, IngestCheckpoint
 from app.db.session import SessionLocal
+from app.services.chunker import chunk_pages
+from app.services.parser import image_manifest, parse_pdf
+from app.services.storage import pdf_path, save_image
 
 STATUS_ORDER = (
     "queued",
@@ -70,7 +74,52 @@ async def abort_ingest(document_id: int) -> None:
 
 
 async def run_parse(session: AsyncSession, document: Document) -> None:
-    return
+    parsed = parse_pdf(pdf_path(document.content_sha256))
+    await session.execute(
+        delete(DocumentPage).where(DocumentPage.document_id == document.id)
+    )
+    for page in parsed.pages:
+        session.add(
+            DocumentPage(
+                document_id=document.id,
+                page_number=page.page_number,
+                width_pt=page.width_pt,
+                height_pt=page.height_pt,
+            )
+        )
+    document.page_count = len(parsed.pages)
+
+    images = []
+    for item in image_manifest(parsed):
+        save_image(item["bytes"], item["sha256"])
+        images.append(
+            {
+                "page_number": item["page_number"],
+                "bbox": item["bbox"],
+                "sha256": item["sha256"],
+            }
+        )
+
+    checkpoint = await session.scalar(
+        select(IngestCheckpoint).where(
+            IngestCheckpoint.document_id == document.id,
+            IngestCheckpoint.stage == "parsing",
+        )
+    )
+    if checkpoint is None:
+        session.add(
+            IngestCheckpoint(
+                document_id=document.id,
+                stage="parsing",
+                last_completed_index=len(parsed.pages),
+                payload={"images": images},
+            )
+        )
+    else:
+        checkpoint.last_completed_index = len(parsed.pages)
+        checkpoint.payload = {"images": images}
+        checkpoint.updated_at = datetime.now(timezone.utc)
+    await session.commit()
 
 
 async def run_caption(session: AsyncSession, document: Document) -> None:
@@ -78,7 +127,31 @@ async def run_caption(session: AsyncSession, document: Document) -> None:
 
 
 async def run_chunk(session: AsyncSession, document: Document) -> None:
-    return
+    parsed = parse_pdf(pdf_path(document.content_sha256))
+    drafts = chunk_pages(parsed.pages)
+    await session.execute(delete(Chunk).where(Chunk.document_id == document.id))
+    pages = {
+        page.page_number: page
+        for page in (
+            await session.scalars(
+                select(DocumentPage).where(DocumentPage.document_id == document.id)
+            )
+        ).all()
+    }
+    for draft in drafts:
+        page = pages[draft.page_number]
+        session.add(
+            Chunk(
+                document_id=document.id,
+                page_id=page.id,
+                chunk_index=draft.chunk_index,
+                content=draft.content,
+                modality=draft.modality,
+                bbox=draft.bbox.as_dict() if draft.bbox else None,
+                token_count=draft.token_count,
+            )
+        )
+    await session.commit()
 
 
 async def run_embed(session: AsyncSession, document: Document) -> None:

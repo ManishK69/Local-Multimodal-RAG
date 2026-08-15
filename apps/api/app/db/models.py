@@ -88,7 +88,9 @@ class DocumentPage(Base):
     height_pt: Mapped[Any] = mapped_column(Numeric, nullable=False)
 
     document: Mapped[Document] = relationship(back_populates="pages")
-    chunks: Mapped[list["Chunk"]] = relationship(back_populates="page")
+    chunks: Mapped[list["Chunk"]] = relationship(
+        back_populates="page", cascade="all, delete-orphan"
+    )
 
 
 class Chunk(Base):
