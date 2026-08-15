@@ -1,4 +1,4 @@
-import { ChatPanel } from "@/components/chat-panel";
+import { DocumentWorkspace } from "@/components/document-workspace";
 import { getDocument } from "@/lib/api";
 
 export default async function DocumentPage({
@@ -17,14 +17,14 @@ export default async function DocumentPage({
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 p-8">
+    <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 p-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">{filename}</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          Answers stay on this machine and cite the PDF.
+          Highlighted citations use PDF bounding boxes from ingest.
         </p>
       </div>
-      <ChatPanel documentId={documentId} />
+      <DocumentWorkspace documentId={documentId} filename={filename} />
     </main>
   );
 }
