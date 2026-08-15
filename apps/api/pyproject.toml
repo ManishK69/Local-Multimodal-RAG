@@ -28,6 +28,9 @@ dev = [
 pythonpath = ["."]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+filterwarnings = [
+  "ignore:Using `httpx` with `starlette.testclient`:",
+]
 
 [tool.ruff]
 target-version = "py312"
