@@ -46,19 +46,25 @@ class OllamaClient:
             checked.append(values)
         return checked
 
-    async def chat(
+    def chat(
         self,
         messages: list[dict[str, Any]],
         *,
         stream: bool = True,
-    ) -> AsyncIterator[str] | str:
+    ) -> AsyncIterator[str]:
         body = {
             "model": self.generate_model,
             "messages": messages,
-            "stream": stream,
+            "stream": True,
         }
-        if stream:
-            return self._chat_stream(body)
+        return self._chat_stream(body)
+
+    async def chat_complete(self, messages: list[dict[str, Any]]) -> str:
+        body = {
+            "model": self.generate_model,
+            "messages": messages,
+            "stream": False,
+        }
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(f"{self.host}/api/chat", json=body)
             response.raise_for_status()
