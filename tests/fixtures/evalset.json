@@ -1,0 +1,14 @@
+{
+  "documentFilename": "sample.pdf",
+  "k": 8,
+  "queries": [
+    {
+      "question": "UNIQUE_PAGE_TWO_TOKEN appears only here",
+      "relevantPageNumbers": [2]
+    },
+    {
+      "question": "UNIQUE_PAGE_ONE_TOKEN appears only here",
+      "relevantPageNumbers": [1]
+    }
+  ]
+}
