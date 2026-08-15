@@ -9,3 +9,9 @@ node_modules/
 .ruff_cache/
 .mypy_cache/
 apps/api/.venv/
+
+.cursor/
+.agents/
+skills-lock.json
+docs/superpowers/
+.superpowers/
