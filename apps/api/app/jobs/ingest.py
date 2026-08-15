@@ -4,7 +4,7 @@ from typing import Any
 from arq import create_pool
 from arq.connections import RedisSettings
 from arq.constants import default_queue_name, job_key_prefix, result_key_prefix
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -123,13 +123,28 @@ async def run_parse(session: AsyncSession, document: Document) -> None:
 
 
 async def run_caption(session: AsyncSession, document: Document) -> None:
-    return
+    from app.services.captions import caption_images
+
+    await caption_images(session, document)
 
 
 async def run_chunk(session: AsyncSession, document: Document) -> None:
     parsed = parse_pdf(pdf_path(document.content_sha256))
     drafts = chunk_pages(parsed.pages)
-    await session.execute(delete(Chunk).where(Chunk.document_id == document.id))
+    await session.execute(
+        delete(Chunk).where(
+            Chunk.document_id == document.id,
+            Chunk.modality != "image_caption",
+        )
+    )
+    start_index = int(
+        await session.scalar(
+            select(func.coalesce(func.max(Chunk.chunk_index), -1)).where(
+                Chunk.document_id == document.id
+            )
+        )
+        + 1
+    )
     pages = {
         page.page_number: page
         for page in (
@@ -144,7 +159,7 @@ async def run_chunk(session: AsyncSession, document: Document) -> None:
             Chunk(
                 document_id=document.id,
                 page_id=page.id,
-                chunk_index=draft.chunk_index,
+                chunk_index=start_index + draft.chunk_index,
                 content=draft.content,
                 modality=draft.modality,
                 bbox=draft.bbox.as_dict() if draft.bbox else None,
