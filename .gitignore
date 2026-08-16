@@ -1,17 +1,58 @@
+# Secrets and local config
 .env
+.env.*
+!.env.example
+
+# Uploaded library (PDFs, figure crops) — never publish
 data/
-**/__pycache__/
+**/data/files/
+**/data/images/
+
+# User PDFs dropped anywhere except the tiny eval fixture
+*.pdf
+!tests/fixtures/*.pdf
+
+# Python
 .venv/
-node_modules/
-.next/
-*.pyc
+venv/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
-apps/api/.venv/
+.coverage
+htmlcov/
+dist/
+build/
+.tox/
 
+# Node / Next
+node_modules/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+
+# OS / editor
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+*.swp
+*~
+
+# Cursor / local agents
 .cursor/
 .agents/
-skills-lock.json
-docs/superpowers/
 .superpowers/
+docs/superpowers/
+skills-lock.json
+
+# Logs and local dumps
+*.log
+*.pid
+dump.rdb
+*.sqlite
+*.db

@@ -52,7 +52,7 @@ No shared npm package in v1. Types are duplicated lightly or generated later.
 `.env.example`:
 
 ```
-POSTGRES_URL=postgresql+asyncpg://lmrag:lmrag@127.0.0.1:5432/lmrag
+POSTGRES_URL=postgresql+asyncpg://lmrag:lmrag@127.0.0.1:5433/lmrag
 REDIS_URL=redis://127.0.0.1:6379/0
 OLLAMA_HOST=http://127.0.0.1:11434
 DATA_DIR=./data
@@ -65,14 +65,23 @@ EMBEDDING_DIM=768
 
 `DATA_DIR` is gitignored.
 
-## Local run (target)
+## Local run
 
-1. `docker compose -f infra/docker-compose.yml up postgres redis`
+From the repo root, after Docker, Ollama, uv, and Node 22 are installed:
+
+```bash
+./scripts/dev.sh              # macOS / Linux
+.\scripts\dev.ps1             # Windows
+```
+
+`--setup-only` stops after deps/models/migrate. `--skip-setup` just starts Postgres/Redis plus the three app processes. `--no-pull` skips Ollama downloads.
+
+Manual equivalent:
+
+1. `docker compose -f infra/docker-compose.yml up -d`
 2. `ollama pull nomic-embed-text` (and generate/vision tags)
 3. `uv sync` in `apps/api`, `alembic upgrade head`, `uvicorn` + `arq`
 4. `npm run dev` in `apps/web`
-
-Alternatively `docker compose up` for the full stack once Dockerfiles exist.
 
 ## Conventions
 
