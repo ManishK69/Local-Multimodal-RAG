@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from urllib.parse import unquote
 
 from sqlalchemy import delete, select
@@ -38,6 +38,7 @@ async def create_document(
     content_sha256: str,
     byte_size: int,
     status: str = "queued",
+    folder_id: int | None = None,
 ) -> Document:
     doc = Document(
         filename=filename,
@@ -45,8 +46,19 @@ async def create_document(
         mime_type="application/pdf",
         byte_size=byte_size,
         status=status,
+        folder_id=folder_id,
     )
     session.add(doc)
+    await session.commit()
+    await session.refresh(doc)
+    return doc
+
+
+async def set_folder(
+    session: AsyncSession, doc: Document, folder_id: int | None
+) -> Document:
+    doc.folder_id = folder_id
+    doc.updated_at = datetime.now(timezone.utc)
     await session.commit()
     await session.refresh(doc)
     return doc
@@ -58,10 +70,16 @@ async def list_documents(
     status: str | None,
     limit: int,
     cursor: str | None,
+    folder_id: int | None = None,
+    unfiled: bool = False,
 ) -> tuple[list[Document], str | None]:
     stmt = select(Document).order_by(Document.created_at.desc(), Document.id.desc())
     if status:
         stmt = stmt.where(Document.status == status)
+    if unfiled:
+        stmt = stmt.where(Document.folder_id.is_(None))
+    elif folder_id is not None:
+        stmt = stmt.where(Document.folder_id == folder_id)
     if cursor:
         created_at, document_id = decode_cursor(cursor)
         stmt = stmt.where(

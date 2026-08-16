@@ -1,51 +1,27 @@
-import Link from "next/link";
-
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { LibraryFolders } from "@/components/library-folders";
 import { UploadDropzone } from "@/components/upload-dropzone";
-import { getHealth } from "@/lib/api";
 
-function statusLabel(status: string): string {
-  if (status === "ok") return "ok";
-  if (status === "degraded") return "degraded";
-  return "unreachable";
-}
-
-export default async function LibraryPage() {
-  let health: Awaited<ReturnType<typeof getHealth>> | null = null;
-  try {
-    health = await getHealth();
-  } catch {
-    health = null;
-  }
-
-  const label = health ? statusLabel(health.status) : "unreachable";
-
+export default function LibraryPage() {
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 p-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Library</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Local PDFs stay on this machine.{" "}
-          <Link className="hover:underline" href="/settings">
-            Settings
-          </Link>
+    <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-8 px-4 py-8 sm:px-6">
+      <div className="enter-up max-w-xl">
+        <p className="text-primary mb-2 text-xs font-medium tracking-[0.18em] uppercase">
+          Library
+        </p>
+        <h1 className="font-heading text-3xl tracking-tight italic sm:text-4xl">
+          Your private shelf
+        </h1>
+        <p className="text-muted-foreground mt-2 max-w-md text-sm leading-relaxed">
+          Drop a PDF, or group related files in a folder and ask across the set.
+          Nothing leaves this machine.
         </p>
       </div>
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-3 text-base">
-            API health
-            <Badge variant={label === "ok" ? "default" : "secondary"}>{label}</Badge>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="text-muted-foreground text-sm">
-          {health
-            ? `postgres ${health.postgres} · redis ${health.redis} · ollama ${health.ollama}`
-            : "Could not reach the API at /backend/health."}
-        </CardContent>
-      </Card>
-      <UploadDropzone />
+      <LibraryFolders />
+      <UploadDropzone
+        unfiled
+        heading="Documents"
+        emptyLabel="PDFs outside a folder live here. Open one to ask about that file only."
+      />
     </main>
   );
 }

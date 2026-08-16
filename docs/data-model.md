@@ -14,16 +14,32 @@ Conventions:
 ## ER diagram
 
 ```
-documents 1───* document_pages 1───* chunks
-    │                                    │
-    └──* ingest_checkpoints              └── embedding vector(768)
-    │                                    └── content_tsv tsvector
-    └──* conversations 1───* messages
-                              └──* message_citations
+folders 1───* documents 1───* document_pages 1───* chunks
+                    │                                    │
+                    └──* ingest_checkpoints              └── embedding vector(768)
+                    │                                    └── content_tsv tsvector
+                    └──* conversations 1───* messages
+                                              └──* message_citations
 retrieval_traces (append-only, query analytics)
 ```
 
 ## Tables
+
+### folders
+
+One-level only. A document belongs to at most one folder (`documents.folder_id`). Deleting a folder sets `folder_id` to null.
+
+```sql
+create table folders (
+  id bigint generated always as identity primary key,
+  name text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint folders_name_chk check (char_length(btrim(name)) > 0)
+);
+
+create index folders_created_at_idx on folders (created_at desc);
+```
 
 ### documents
 
@@ -38,6 +54,7 @@ create table documents (
   status text not null,
   error_code text,
   error_message text,
+  folder_id bigint references folders (id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint documents_status_chk check (
@@ -52,6 +69,7 @@ create table documents (
 create unique index documents_sha256_uidx on documents (content_sha256);
 create index documents_status_idx on documents (status);
 create index documents_created_at_idx on documents (created_at desc);
+create index documents_folder_id_idx on documents (folder_id);
 ```
 
 `page_count` is null until parsing finishes.

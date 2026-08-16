@@ -85,3 +85,42 @@ async def test_dedup_ready_returns_200(client, ready_document):
     res = await client.post("/documents", files=files)
     assert res.status_code == 200
     assert res.json()["id"] == ready_document.id
+
+
+@pytest.mark.asyncio
+async def test_ready_without_pages_is_reingested(client, data_dir):
+    await engine.dispose()
+    digest = sha256_bytes(PDF_BYTES)
+    save_pdf(PDF_BYTES, digest)
+    async with SessionLocal() as session:
+        existing = await session.scalar(
+            select(Document).where(Document.content_sha256 == digest)
+        )
+        if existing is not None:
+            await session.delete(existing)
+            await session.commit()
+        doc = Document(
+            filename="a.pdf",
+            content_sha256=digest,
+            mime_type="application/pdf",
+            byte_size=len(PDF_BYTES),
+            status="ready",
+            page_count=None,
+        )
+        session.add(doc)
+        await session.commit()
+        await session.refresh(doc)
+        doc_id = doc.id
+
+    files = {"file": ("a.pdf", PDF_BYTES, "application/pdf")}
+    res = await client.post("/documents", files=files)
+    assert res.status_code == 202
+    payload = res.json()
+    assert payload["id"] == doc_id
+    assert payload["status"] == "queued"
+
+    async with SessionLocal() as session:
+        leftover = await session.get(Document, doc_id)
+        if leftover is not None:
+            await session.delete(leftover)
+            await session.commit()

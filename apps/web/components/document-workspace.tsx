@@ -6,6 +6,7 @@ import { ChatPanel } from "@/components/chat-panel";
 import { PdfPreview } from "@/components/pdf-preview";
 import type { Citation } from "@/lib/api";
 import { getDocumentPages } from "@/lib/api";
+import { takePendingCitation } from "@/lib/citation";
 
 export function DocumentWorkspace({
   documentId,
@@ -25,18 +26,26 @@ export function DocumentWorkspace({
       .catch(() => setPages([]));
   }, [documentId]);
 
+  useEffect(() => {
+    const pending = takePendingCitation(documentId);
+    if (pending) setCitation(pending);
+  }, [documentId]);
+
   return (
-    <div className="grid min-h-[70vh] gap-6 md:grid-cols-2">
-      <section>
-        <h2 className="mb-3 text-sm font-medium">{filename}</h2>
+    <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)]">
+      <section className="bg-card/40 flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl p-3 ring-1 ring-foreground/8">
         <PdfPreview
           documentId={documentId}
           pages={pages}
           activeCitation={citation}
+          filename={filename}
         />
       </section>
-      <section>
-        <ChatPanel documentId={documentId} onCitation={setCitation} />
+      <section className="relative z-10 flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl bg-card ring-1 ring-foreground/8">
+        <ChatPanel
+          documentIds={[documentId]}
+          onCitation={setCitation}
+        />
       </section>
     </div>
   );

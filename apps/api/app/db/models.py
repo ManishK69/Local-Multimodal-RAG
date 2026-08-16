@@ -24,6 +24,27 @@ class Base(DeclarativeBase):
     pass
 
 
+class Folder(Base):
+    __tablename__ = "folders"
+    __table_args__ = (
+        CheckConstraint("char_length(btrim(name)) > 0", name="folders_name_chk"),
+        Index("folders_created_at_idx", text("created_at DESC")),
+    )
+
+    id: Mapped[int] = mapped_column(
+        BigInteger, Identity(always=True), primary_key=True
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    documents: Mapped[list["Document"]] = relationship(back_populates="folder")
+
+
 class Document(Base):
     __tablename__ = "documents"
     __table_args__ = (
@@ -40,6 +61,7 @@ class Document(Base):
         Index("documents_sha256_uidx", "content_sha256", unique=True),
         Index("documents_status_idx", "status"),
         Index("documents_created_at_idx", text("created_at DESC")),
+        Index("documents_folder_id_idx", "folder_id"),
     )
 
     id: Mapped[int] = mapped_column(
@@ -55,6 +77,9 @@ class Document(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False)
     error_code: Mapped[str | None] = mapped_column(Text)
     error_message: Mapped[str | None] = mapped_column(Text)
+    folder_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("folders.id", ondelete="SET NULL")
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -62,6 +87,7 @@ class Document(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
+    folder: Mapped["Folder | None"] = relationship(back_populates="documents")
     pages: Mapped[list["DocumentPage"]] = relationship(
         back_populates="document", cascade="all, delete-orphan"
     )

@@ -13,7 +13,8 @@
 | Path | Purpose |
 | --- | --- |
 | `/` | Redirect to `/library` |
-| `/library` | Document list + upload dropzone |
+| `/library` | Folders, unfiled PDFs, upload dropzone |
+| `/library/folders/[id]` | Folder files, upload, and a chat bar over every ready PDF |
 | `/library/[id]` | Split view: PDF preview (left) + chat (right) |
 | `/chats` | Conversation list |
 | `/chats/[id]` | Same split view bound to a conversation; PDF follows active citation |
@@ -65,13 +66,13 @@ Do not use React Server Actions for the stream; this is a browser-to-API event s
    - overlay a rectangle from `bbox` converted to viewport:
 
 ```
-viewportX = bbox.x * viewport.scale
-viewportY = (pageHeightPt - bbox.y - bbox.h) * viewport.scale
-viewportW = bbox.w * viewport.scale
-viewportH = bbox.h * viewport.scale
+viewportX = bbox.x * viewport.scale * displayScale
+viewportY = bbox.y * viewport.scale * displayScale
+viewportW = bbox.w * viewport.scale * displayScale
+viewportH = bbox.h * viewport.scale * displayScale
 ```
 
-Y-flip assumes PDF origin bottom-left. Verify against one fixture page in a unit test (`lib/pdf/bbox.ts`). If a citation has `bbox: null`, flash the whole page (amber border) instead of a box.
+Bboxes are PyMuPDF top-left points, same origin as pdf.js. `displayScale` is canvas client width / buffer width so the overlay tracks CSS sizing. If a citation has `bbox: null`, flash the whole page (brass border) instead of a box.
 
 3. Snippet is shown in a hover card so the user sees the retrieved text, not only the highlight.
 

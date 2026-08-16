@@ -1,7 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getHealth, getSettings } from "@/lib/api";
-import Link from "next/link";
 
 export default async function SettingsPage() {
   let health: Awaited<ReturnType<typeof getHealth>> | null = null;
@@ -13,51 +12,71 @@ export default async function SettingsPage() {
     settings = null;
   }
 
+  const rows = [
+    ["Embed", settings?.embedModel ?? "—"],
+    ["Vision", settings?.visionModel ?? "—"],
+    ["Generate", settings?.generateModel ?? "—"],
+    ["Embedding dim", String(settings?.embeddingDim ?? "—")],
+    [
+      "Max upload",
+      settings?.maxUploadBytes
+        ? `${Math.round(settings.maxUploadBytes / (1024 * 1024))} MB`
+        : "—",
+    ],
+  ];
+
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 p-8">
-      <div>
-        <p className="text-muted-foreground mb-2 text-sm">
-          <Link className="hover:underline" href="/library">
-            Library
-          </Link>
+    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-4 py-8 sm:px-6">
+      <div className="enter-up">
+        <p className="text-primary mb-2 text-xs font-medium tracking-[0.18em] uppercase">
+          Settings
         </p>
-        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Read-only. Change models in <code>.env</code> and restart the API.
+        <h1 className="font-heading text-3xl tracking-tight italic">Machine</h1>
+        <p className="text-muted-foreground mt-2 max-w-md text-sm leading-relaxed">
+          Read-only. Change models in <code className="font-mono text-foreground/80">.env</code>{" "}
+          and restart the API.
         </p>
       </div>
-      <Card>
-        <CardHeader>
+      <Card className="enter-up" style={{ animationDelay: "40ms" }}>
+        <CardHeader className="border-b">
           <CardTitle className="flex items-center gap-3 text-base">
             Health
-            <Badge variant={health?.status === "ok" ? "default" : "secondary"}>
+            <Badge variant={health?.status === "ok" ? "outline" : "destructive"}>
               {health?.status ?? "unreachable"}
             </Badge>
           </CardTitle>
         </CardHeader>
-        <CardContent className="text-muted-foreground space-y-1 text-sm">
-          <p>postgres {health?.postgres ?? "unknown"}</p>
-          <p>redis {health?.redis ?? "unknown"}</p>
-          <p>ollama {health?.ollama ?? "unknown"}</p>
-          <p>
-            models embed={String(health?.models.embed ?? false)} vision=
-            {String(health?.models.vision ?? false)} generate=
-            {String(health?.models.generate ?? false)}
-          </p>
+        <CardContent className="text-muted-foreground grid gap-3 py-4 text-sm sm:grid-cols-3">
+          <HealthCell label="Postgres" value={health?.postgres} />
+          <HealthCell label="Redis" value={health?.redis} />
+          <HealthCell label="Ollama" value={health?.ollama} />
         </CardContent>
       </Card>
-      <Card>
-        <CardHeader>
+      <Card className="enter-up" style={{ animationDelay: "80ms" }}>
+        <CardHeader className="border-b">
           <CardTitle className="text-base">Models</CardTitle>
         </CardHeader>
-        <CardContent className="text-muted-foreground space-y-1 text-sm">
-          <p>embed: {settings?.embedModel ?? "—"}</p>
-          <p>vision: {settings?.visionModel ?? "—"}</p>
-          <p>generate: {settings?.generateModel ?? "—"}</p>
-          <p>embedding dim: {settings?.embeddingDim ?? "—"}</p>
-          <p>max upload bytes: {settings?.maxUploadBytes ?? "—"}</p>
+        <CardContent className="divide-border divide-y">
+          {rows.map(([label, value]) => (
+            <div
+              key={label}
+              className="flex items-baseline justify-between gap-4 py-3 text-sm"
+            >
+              <span className="text-muted-foreground">{label}</span>
+              <span className="font-mono text-xs sm:text-sm">{value}</span>
+            </div>
+          ))}
         </CardContent>
       </Card>
     </main>
+  );
+}
+
+function HealthCell({ label, value }: { label: string; value?: string }) {
+  return (
+    <div>
+      <p className="text-muted-foreground text-xs tracking-wide uppercase">{label}</p>
+      <p className="mt-1 font-medium text-foreground">{value ?? "unknown"}</p>
+    </div>
   );
 }

@@ -1,3 +1,5 @@
+from typing import TypeVar
+
 from dataclasses import dataclass
 
 from app.services.parser import BBox, ParsedBlock, ParsedDocument, ParsedPage
@@ -10,6 +12,8 @@ __all__ = [
     "ParsedPage",
     "chunk_pages",
 ]
+
+T = TypeVar("T")
 
 
 @dataclass
@@ -33,18 +37,18 @@ def _union_bbox(boxes: list[BBox | None]) -> BBox | None:
     return BBox(x=x0, y=y0, w=x1 - x0, h=y1 - y0)
 
 
-def _windows(tokens: list[str], target: int, overlap: int) -> list[list[str]]:
-    if not tokens:
+def _windows(items: list[T], target: int, overlap: int) -> list[list[T]]:
+    if not items:
         return []
-    if len(tokens) <= target:
-        return [tokens]
+    if len(items) <= target:
+        return [items]
     step = max(target - overlap, 1)
-    result: list[list[str]] = []
+    result: list[list[T]] = []
     start = 0
-    while start < len(tokens):
-        end = min(start + target, len(tokens))
-        result.append(tokens[start:end])
-        if end == len(tokens):
+    while start < len(items):
+        end = min(start + target, len(items))
+        result.append(items[start:end])
+        if end == len(items):
             break
         start += step
     return result
@@ -58,26 +62,24 @@ def chunk_pages(
     drafts: list[ChunkDraft] = []
     chunk_index = 0
     for page in pages:
-        pending_tokens: list[str] = []
-        pending_boxes: list[BBox | None] = []
+        pending: list[tuple[str, BBox | None]] = []
 
         def flush_text() -> None:
-            nonlocal chunk_index, pending_tokens, pending_boxes
-            for window in _windows(pending_tokens, target_tokens, overlap_tokens):
-                content = " ".join(window)
+            nonlocal chunk_index, pending
+            for window in _windows(pending, target_tokens, overlap_tokens):
+                content = " ".join(token for token, _bbox in window)
                 drafts.append(
                     ChunkDraft(
                         page_number=page.page_number,
                         content=content,
                         modality="text",
-                        bbox=_union_bbox(pending_boxes),
+                        bbox=_union_bbox([bbox for _token, bbox in window]),
                         token_count=len(window),
                         chunk_index=chunk_index,
                     )
                 )
                 chunk_index += 1
-            pending_tokens = []
-            pending_boxes = []
+            pending = []
 
         for block in page.blocks:
             if block.modality == "image":
@@ -102,7 +104,6 @@ def chunk_pages(
             tokens = block.text.split()
             if not tokens:
                 continue
-            pending_tokens.extend(tokens)
-            pending_boxes.append(block.bbox)
+            pending.extend((token, block.bbox) for token in tokens)
         flush_text()
     return drafts

@@ -186,6 +186,11 @@ async def ingest_document(ctx: dict[str, Any], document_id: int) -> None:
         if document is None:
             return
         try:
+            if document.status == "ready" and not document.page_count:
+                document.status = "queued"
+                document.error_code = None
+                document.error_message = None
+
             if document.status == "queued":
                 _touch(document, next_status(document.status))
                 await session.commit()
@@ -200,6 +205,10 @@ async def ingest_document(ctx: dict[str, Any], document_id: int) -> None:
                 if document.status != expected:
                     continue
                 await stage(session, document)
+                if expected == "parsing" and not document.page_count:
+                    raise RuntimeError(
+                        "Parse produced no pages; the PDF may be missing or unreadable."
+                    )
                 _touch(document, next_status(expected))
                 await session.commit()
         except Exception as exc:

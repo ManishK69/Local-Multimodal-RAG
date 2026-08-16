@@ -52,7 +52,7 @@ Auth: none. The process listens on loopback. CORS allows `http://127.0.0.1:3000`
 
 ### `POST /documents`
 
-`multipart/form-data` field `file`.
+`multipart/form-data`: `file` required, `folderId` optional (places the PDF in that folder).
 
 Response `202`:
 
@@ -64,24 +64,26 @@ Response `202`:
   "byteSize": 123456,
   "status": "queued",
   "pageCount": null,
+  "folderId": null,
   "createdAt": "2026-08-15T21:00:00Z"
 }
 ```
 
-If the hash already exists and `status=ready`, return `200` with that document (dedup). If it exists and is `failed`, return `202` and re-enqueue.
+If the hash already exists and `status=ready`, return `200` with that document (dedup). If `folderId` is sent, the existing file is moved into that folder. If it exists and is `failed`, return `202` and re-enqueue.
 
 ### `GET /documents`
 
-Query: `status`, `limit` (default 50, max 200), `cursor` (created_at,id).
+Query: `status`, `limit` (default 50, max 200), `cursor` (created_at,id), `folderId`, `unfiled=true`.
 
-Cursor pagination, not offset.
+`unfiled=true` returns documents with `folderId` null. `folderId` returns only that folder. Neither returns the full library.
+
+### `PATCH /documents/{id}`
 
 ```json
-{
-  "items": [ { "id": 1, "filename": "attention.pdf", "status": "ready", "pageCount": 15 } ],
-  "nextCursor": null
-}
+{ "folderId": 3 }
 ```
+
+`folderId` may be `null` to unfile. Exclusive membership: a document is in at most one folder.
 
 ### `GET /documents/{id}`
 
@@ -106,6 +108,36 @@ Page dimensions for overlay math:
 ### `DELETE /documents/{id}`
 
 `204`. Cascades DB rows, deletes blob, best-effort abort of Arq job.
+
+## Folders
+
+One-level folders only. Deleting a folder sets `documents.folder_id` to null (files return to the library root).
+
+### `POST /folders`
+
+```json
+{ "name": "Q3 filings" }
+```
+
+`201` `{ "id": 1, "name": "Q3 filings", "documentCount": 0, "createdAt": "...", "updatedAt": "..." }`
+
+### `GET /folders`
+
+```json
+{ "items": [{ "id": 1, "name": "Q3 filings", "documentCount": 2 }] }
+```
+
+### `GET /folders/{id}`
+
+Folder plus its documents.
+
+### `PATCH /folders/{id}`
+
+```json
+{ "name": "Q3 filings (final)" }
+```
+
+### `DELETE /folders/{id}` → `204`
 
 ## Conversations
 
@@ -166,7 +198,9 @@ Request:
 }
 ```
 
-`documentIds` optional; empty/null means the whole library. `topK` is fused_k, clamped 1–20.
+`documentIds` optional for `ask`; required for `mode: "insight"`. `topK` is fused_k, clamped 1–20.
+
+`mode` is `ask` (default) or `insight`. Insight retrieves from each listed document, then asks the model for a brief, themes, and where the files agree or differ. The stored user message is `Summarize this folder`.
 
 Response: `text/event-stream`.
 
@@ -194,7 +228,7 @@ data: {"code":"dependency_unavailable","message":"Ollama is not running"}
 
 Contract:
 
-- `citations` is sent **before** tokens when possible (retrieval known). The model is instructed to use `[1]`, `[2]` matching `markerIndex`.
+- `citations` is sent **before** tokens when possible (retrieval known). The model is instructed to use `[1]`, `[2]` matching `markerIndex`. Each citation includes `documentId` and `filename` so a folder-scoped chat can switch the PDF preview.
 - If the model emits unknown markers, the UI ignores them.
 - `done` always includes the persisted `messageId`.
 - Client disconnect cancels the Ollama stream (FastAPI `Request.is_disconnected`).

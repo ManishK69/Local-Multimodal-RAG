@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Newsreader } from "next/font/google";
+
+import { AppHeader } from "@/components/app-header";
+
 import "./globals.css";
 
 const geistSans = Geist({
@@ -12,9 +15,15 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const newsreader = Newsreader({
+  variable: "--font-display",
+  subsets: ["latin"],
+  style: ["normal", "italic"],
+});
+
 export const metadata: Metadata = {
-  title: "Local Multimodal RAG",
-  description: "Private PDF question answering on localhost",
+  title: "Local RAG",
+  description: "Private PDF question answering on this machine",
 };
 
 export default function RootLayout({
@@ -23,11 +32,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className="dark">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${newsreader.variable} flex min-h-dvh flex-col font-sans antialiased`}
       >
-        {children}
+        <AppHeader />
+        <div className="flex min-h-0 flex-1 flex-col">{children}</div>
       </body>
     </html>
   );

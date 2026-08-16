@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes.chat import router as chat_router
 from app.api.routes.documents import router as documents_router
+from app.api.routes.folders import router as folders_router
 from app.api.routes.health import router as health_router
 from app.api.routes.settings import router as settings_router
 from app.core.errors import register_error_handlers
@@ -26,6 +27,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(settings_router)
     app.include_router(documents_router)
+    app.include_router(folders_router)
     app.include_router(chat_router)
     return app
 

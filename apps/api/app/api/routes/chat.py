@@ -4,7 +4,7 @@ import json
 import time
 from collections.abc import AsyncIterator
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import Response, StreamingResponse
@@ -16,12 +16,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_session
 from app.core.config import settings
 from app.core.errors import AppError
-from app.db.models import Chunk, DocumentPage, Message, RetrievalTrace
+from app.db.models import Chunk, Document, DocumentPage, Message, RetrievalTrace
 from app.db.repositories import conversations as conv_repo
 from app.services.citations import parse_markers
-from app.services.generate import build_messages, citation_payloads
+from app.services.generate import (
+    INSIGHT_RETRIEVAL_QUERY,
+    INSIGHT_USER_LABEL,
+    build_insight_messages,
+    build_messages,
+    citation_payloads,
+    empty_retrieval_answer,
+)
 from app.services.ollama import OllamaClient
-from app.services.retrieval import hybrid_search
+from app.services.retrieval import diversified_search, hybrid_search
 
 router = APIRouter(tags=["chat"])
 
@@ -38,9 +45,10 @@ class ConversationCreate(CamelModel):
 
 
 class ChatRequest(CamelModel):
-    content: str
+    content: str = ""
     document_ids: list[int] | None = None
     top_k: int = Field(default=8, ge=1, le=20)
+    mode: Literal["ask", "insight"] = "ask"
 
 
 def _serialize_dt(value: datetime) -> str:
@@ -65,16 +73,21 @@ async def message_out(session: AsyncSession, message: Message) -> dict[str, Any]
         chunk_ids = [item.chunk_id for item in message.citations]
         rows = (
             await session.execute(
-                select(Chunk, DocumentPage.page_number)
+                select(Chunk, DocumentPage.page_number, Document.filename)
                 .join(DocumentPage, DocumentPage.id == Chunk.page_id)
+                .join(Document, Document.id == Chunk.document_id)
                 .where(Chunk.id.in_(chunk_ids))
             )
         ).all()
-        by_id = {chunk.id: (chunk, page_number) for chunk, page_number in rows}
+        by_id = {
+            chunk.id: (chunk, page_number, filename)
+            for chunk, page_number, filename in rows
+        }
         for item in sorted(message.citations, key=lambda c: c.marker_index):
-            chunk, page_number = by_id.get(item.chunk_id, (None, None))
-            if chunk is None:
+            found = by_id.get(item.chunk_id)
+            if found is None:
                 continue
+            chunk, page_number, filename = found
             citations.append(
                 {
                     "markerIndex": item.marker_index,
@@ -83,6 +96,7 @@ async def message_out(session: AsyncSession, message: Message) -> dict[str, Any]
                     "pageNumber": int(page_number),
                     "bbox": chunk.bbox,
                     "snippet": chunk.content[:240],
+                    "filename": filename,
                 }
             )
     return {
@@ -160,44 +174,81 @@ async def post_message(
     conversation = await conv_repo.get_conversation(session, conversation_id)
     if conversation is None:
         raise AppError("not_found", "Conversation not found.", status_code=404)
+    insight = body.mode == "insight"
+    if insight and not body.document_ids:
+        raise AppError(
+            "validation_error",
+            "Insight requires documentIds.",
+            status_code=422,
+        )
+    user_text = (
+        INSIGHT_USER_LABEL
+        if insight
+        else body.content.strip()
+    )
+    if not user_text:
+        raise AppError(
+            "validation_error",
+            "Message content is required.",
+            status_code=422,
+        )
 
     async def events() -> AsyncIterator[str]:
         client = OllamaClient()
         try:
             await conv_repo.add_message(
-                session, conversation_id, "user", body.content
+                session, conversation_id, "user", user_text
             )
             yield sse("status", {"stage": "retrieving"})
             embed_started = time.perf_counter()
-            query_vec = (await client.embed([body.content]))[0]
+            retrieve_query = INSIGHT_RETRIEVAL_QUERY if insight else user_text
+            query_vec = (await client.embed([retrieve_query]))[0]
             latency_embed_ms = int((time.perf_counter() - embed_started) * 1000)
             retrieve_started = time.perf_counter()
-            fused_k = body.top_k
-            result = await hybrid_search(
-                session,
-                body.content,
-                query_vec=query_vec,
-                k_vector=20,
-                k_lexical=20,
-                fused_k=fused_k,
-                document_ids=body.document_ids or None,
-            )
+            if insight:
+                result = await diversified_search(
+                    session,
+                    retrieve_query,
+                    query_vec=query_vec,
+                    document_ids=body.document_ids or [],
+                    per_doc=4,
+                    cap=max(body.top_k, 16),
+                )
+            else:
+                result = await hybrid_search(
+                    session,
+                    retrieve_query,
+                    query_vec=query_vec,
+                    k_vector=20,
+                    k_lexical=20,
+                    fused_k=body.top_k,
+                    document_ids=body.document_ids or None,
+                )
             ranked = result.fused
             latency_retrieve_ms = int(
                 (time.perf_counter() - retrieve_started) * 1000
             )
             citations = citation_payloads(ranked)
             yield sse("citations", {"citations": citations})
-            messages = build_messages(body.content, ranked)
             generate_started = time.perf_counter()
             parts: list[str] = []
-            stream = client.chat(messages, stream=True)
-            async for token in stream:
-                if await request.is_disconnected():
-                    return
-                parts.append(token)
-                yield sse("token", {"text": token})
-            answer = "".join(parts)
+            if not ranked:
+                answer = empty_retrieval_answer()
+                parts.append(answer)
+                yield sse("token", {"text": answer})
+            else:
+                messages = (
+                    build_insight_messages(ranked)
+                    if insight
+                    else build_messages(user_text, ranked)
+                )
+                stream = client.chat(messages, stream=True)
+                async for token in stream:
+                    if await request.is_disconnected():
+                        return
+                    parts.append(token)
+                    yield sse("token", {"text": token})
+                answer = "".join(parts)
             latency_generate_ms = int(
                 (time.perf_counter() - generate_started) * 1000
             )
@@ -214,7 +265,7 @@ async def post_message(
                 RetrievalTrace(
                     conversation_id=conversation_id,
                     message_id=assistant.id,
-                    query=body.content,
+                    query=retrieve_query,
                     embed_model=settings.embed_model,
                     generate_model=settings.generate_model,
                     vector_chunk_ids=[item.chunk_id for item in result.vector],
@@ -237,4 +288,12 @@ async def post_message(
                 },
             )
 
-    return StreamingResponse(events(), media_type="text/event-stream")
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

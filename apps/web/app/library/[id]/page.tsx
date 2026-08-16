@@ -17,12 +17,12 @@ export default async function DocumentPage({
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 p-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">{filename}</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Highlighted citations use PDF bounding boxes from ingest.
+    <main className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col overflow-hidden px-4 py-4 sm:px-6">
+      <div className="mb-3 shrink-0">
+        <p className="text-primary text-xs font-medium tracking-[0.18em] uppercase">
+          Reading desk
         </p>
+        <h1 className="mt-1 truncate text-lg font-medium tracking-tight">{filename}</h1>
       </div>
       <DocumentWorkspace documentId={documentId} filename={filename} />
     </main>

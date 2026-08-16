@@ -2,7 +2,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query, UploadFile
+from fastapi import APIRouter, Depends, Form, Query, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.core.errors import AppError
 from app.db.models import Document, IngestCheckpoint
 from app.db.repositories import documents as docs_repo
+from app.db.repositories import folders as folder_repo
 from app.jobs import ingest as ingest_jobs
 from app.services.hashing import sha256_bytes
 from app.services.storage import delete_pdf, pdf_path, save_pdf
@@ -44,11 +45,16 @@ class DocumentOut(CamelModel):
     byte_size: int
     status: str
     page_count: int | None = None
+    folder_id: int | None = None
     error_code: str | None = None
     error_message: str | None = None
     created_at: datetime
     updated_at: datetime
     latest_checkpoint: CheckpointOut | None = None
+
+
+class DocumentPatch(CamelModel):
+    folder_id: int | None
 
 
 class DocumentListOut(CamelModel):
@@ -83,6 +89,7 @@ def document_to_out(
         byte_size=doc.byte_size,
         status=doc.status,
         page_count=doc.page_count,
+        folder_id=doc.folder_id,
         error_code=doc.error_code,
         error_message=doc.error_message,
         created_at=doc.created_at,
@@ -121,10 +128,22 @@ async def _read_upload(file: UploadFile) -> bytes:
     return b"".join(chunks)
 
 
+async def _resolve_folder_id(
+    session: AsyncSession, folder_id: int | None
+) -> int | None:
+    if folder_id is None:
+        return None
+    folder = await folder_repo.get_folder(session, folder_id)
+    if folder is None:
+        raise AppError("not_found", "Folder not found.", status_code=404)
+    return folder.id
+
+
 @router.post("")
 async def upload_document(
     file: UploadFile,
     session: AsyncSession = Depends(get_session),
+    folder_id: int | None = Form(default=None, alias="folderId"),
 ) -> JSONResponse:
     data = await _read_upload(file)
     if not data.startswith(PDF_MAGIC):
@@ -133,13 +152,23 @@ async def upload_document(
     digest = sha256_bytes(data)
     filename = Path(file.filename or "upload.pdf").name
     existing = await docs_repo.get_by_sha256(session, digest)
+    resolved_folder_id = await _resolve_folder_id(session, folder_id)
 
-    if existing is not None and existing.status == "ready":
+    if existing is not None and existing.status == "ready" and existing.page_count:
+        if resolved_folder_id is not None and existing.folder_id != resolved_folder_id:
+            existing = await docs_repo.set_folder(
+                session, existing, resolved_folder_id
+            )
         return document_response(existing, status_code=200)
 
     save_pdf(data, digest)
 
-    if existing is not None and existing.status == "failed":
+    if existing is not None and (
+        existing.status == "failed"
+        or (existing.status == "ready" and not existing.page_count)
+    ):
+        if resolved_folder_id is not None:
+            existing.folder_id = resolved_folder_id
         doc = await docs_repo.reset_failed_for_reingest(session, existing)
         try:
             await ingest_jobs.enqueue_ingest(doc.id)
@@ -160,6 +189,7 @@ async def upload_document(
         filename=filename,
         content_sha256=digest,
         byte_size=len(data),
+        folder_id=resolved_folder_id,
     )
     try:
         await ingest_jobs.enqueue_ingest(doc.id)
@@ -179,11 +209,32 @@ async def list_documents(
     status: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
     cursor: str | None = Query(default=None),
+    folder_id: int | None = Query(default=None, alias="folderId"),
+    unfiled: bool = Query(default=False),
 ) -> dict[str, Any]:
     rows, next_cursor = await docs_repo.list_documents(
-        session, status=status, limit=limit, cursor=cursor
+        session,
+        status=status,
+        limit=limit,
+        cursor=cursor,
+        folder_id=folder_id,
+        unfiled=unfiled,
     )
     return {"items": [document_to_out(row) for row in rows], "nextCursor": next_cursor}
+
+
+@router.patch("/{document_id}")
+async def patch_document(
+    document_id: int,
+    body: DocumentPatch,
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    doc = await docs_repo.get_by_id(session, document_id)
+    if doc is None:
+        raise AppError("not_found", "Document not found.", status_code=404)
+    folder_id = await _resolve_folder_id(session, body.folder_id)
+    doc = await docs_repo.set_folder(session, doc, folder_id)
+    return document_to_out(doc)
 
 
 @router.get("/{document_id}")

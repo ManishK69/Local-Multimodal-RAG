@@ -1,5 +1,4 @@
-export const API_BASE =
-  typeof window === "undefined" ? "http://127.0.0.1:8000" : "/backend";
+export const API_BASE = "http://127.0.0.1:8000";
 
 export type Health = {
   status: string;
@@ -16,10 +15,20 @@ export type DocumentRecord = {
   byteSize: number;
   status: string;
   pageCount: number | null;
+  folderId: number | null;
   errorCode: string | null;
   errorMessage: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type FolderRecord = {
+  id: number;
+  name: string;
+  documentCount: number;
+  createdAt: string;
+  updatedAt: string;
+  documents?: DocumentRecord[];
 };
 
 export type Citation = {
@@ -29,6 +38,7 @@ export type Citation = {
   pageNumber: number;
   bbox: { x: number; y: number; w: number; h: number } | null;
   snippet: string;
+  filename?: string;
 };
 
 export type Conversation = {
@@ -67,9 +77,16 @@ export async function getHealth() {
   return api<Health>("/health");
 }
 
-export async function listDocuments() {
+export async function listDocuments(opts?: {
+  folderId?: number;
+  unfiled?: boolean;
+}) {
+  const params = new URLSearchParams();
+  if (opts?.folderId != null) params.set("folderId", String(opts.folderId));
+  if (opts?.unfiled) params.set("unfiled", "true");
+  const query = params.toString();
   return api<{ items: DocumentRecord[]; nextCursor: string | null }>(
-    "/documents",
+    `/documents${query ? `?${query}` : ""}`,
   );
 }
 
@@ -77,15 +94,56 @@ export async function getDocument(id: number) {
   return api<DocumentRecord>(`/documents/${id}`);
 }
 
-export async function uploadDocument(file: File) {
+export async function uploadDocument(file: File, folderId?: number) {
   const body = new FormData();
   body.append("file", file);
+  if (folderId != null) body.append("folderId", String(folderId));
   const res = await fetch(`${API_BASE}/documents`, {
     method: "POST",
     body,
   });
   if (!res.ok) throw new Error("upload failed");
   return res.json() as Promise<DocumentRecord>;
+}
+
+export async function patchDocument(id: number, folderId: number | null) {
+  return api<DocumentRecord>(`/documents/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ folderId }),
+  });
+}
+
+export async function deleteDocument(id: number) {
+  return api<void>(`/documents/${id}`, { method: "DELETE" });
+}
+
+export async function listFolders() {
+  return api<{ items: FolderRecord[] }>("/folders");
+}
+
+export async function getFolder(id: number) {
+  return api<FolderRecord>(`/folders/${id}`);
+}
+
+export async function createFolder(name: string) {
+  return api<FolderRecord>("/folders", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function renameFolder(id: number, name: string) {
+  return api<FolderRecord>(`/folders/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function deleteFolder(id: number) {
+  return api<void>(`/folders/${id}`, { method: "DELETE" });
 }
 
 export async function createConversation(title?: string) {
@@ -101,7 +159,10 @@ export async function getConversation(id: number) {
 }
 
 export function documentFileUrl(id: number) {
-  return `${API_BASE}/documents/${id}/file`;
+  if (typeof window === "undefined") {
+    return `${API_BASE}/documents/${id}/file`;
+  }
+  return `/backend/documents/${id}/file`;
 }
 
 export async function getDocumentPages(id: number) {
@@ -119,16 +180,22 @@ export async function streamChatMessage(args: {
   content: string;
   documentIds?: number[];
   topK?: number;
+  mode?: "ask" | "insight";
 }) {
   const res = await fetch(
     `${API_BASE}/conversations/${args.conversationId}/messages`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+      },
       body: JSON.stringify({
         content: args.content,
         documentIds: args.documentIds,
-        topK: args.topK ?? 8,
+        topK: args.topK ?? (args.mode === "insight" ? 16 : 8),
+        mode: args.mode ?? "ask",
       }),
     },
   );

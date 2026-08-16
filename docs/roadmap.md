@@ -70,3 +70,11 @@ Retry failed ingest, retrieval traces in README, eval numbers, settings/health b
 ## Follow-on plans
 
 When Phase 5 is done, write a new implementation plan for the next slice (Office ingest **or** rerank **or** collections) — not all three.
+
+### After folders (in scope next)
+
+One-level folders and multi-file ask are the current slice. **Do not start this until that UI is in daily use.**
+
+| Item | Why next |
+| --- | --- |
+| Folder insight / summary | **Shipped (v1).** One-click Insight on a folder chat: diversified hybrid retrieval + a synthesis prompt. Not a second index. |
