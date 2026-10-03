@@ -56,3 +56,6 @@ skills-lock.json
 dump.rdb
 *.sqlite
 *.db
+
+# Eval reports (generated)
+/eval/

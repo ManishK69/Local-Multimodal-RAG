@@ -76,7 +76,23 @@ npm run dev
 
 ## Retrieval eval
 
-With a ready fixture document and Ollama embeddings:
+Gold-set evaluation lives in `tests/fixtures/eval/` (schema and labelling
+guide in its README). With a ready fixture document and Ollama embeddings:
+
+```bash
+# macOS / Linux
+apps/api/.venv/bin/python scripts/eval_rag.py
+
+# Windows (PowerShell)
+apps/api/.venv/Scripts/python.exe scripts/eval_rag.py
+```
+
+Compares vector, lexical, and hybrid retrieval with hit@k, recall@k, and MRR
+at chunk level, and writes a JSON report to `eval/reports/<timestamp>/`.
+Useful flags: `--gold PATH`, `--variants vector lexical hybrid`, `--k 8`,
+`--report-dir DIR`.
+
+The original smoke check is still available:
 
 ```bash
 apps/api/.venv/Scripts/python.exe scripts/eval_retrieval.py
